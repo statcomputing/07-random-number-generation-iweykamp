@@ -1,0 +1,134 @@
+---
+title: "BIST 5361 HW 7"
+author: "Ian Weykamp"
+date: "10/23/2020"
+output: html_document
+---
+5.3.1
+
+$$C\frac{1}{\Gamma(\theta)}\int_0^\infty(2x^{(\theta-1)}+x^{(\theta-\frac{1}{2})}e^{-x})dx=1$$
+
+$$=2C+C\frac{1}{\Gamma(\theta)}\int_0^\infty(x^{(\theta-\frac{1}{2})}e^{-x})dx$$
+
+$$=2C+C\frac{\Gamma(\frac{2\theta+1}{2})}{\Gamma(\theta)}=1$$
+$$=2C+C\frac{\sqrt{\pi}2\theta!}{2^{2\theta}\theta!}=1$$
+$$C=\frac{1}{2+\frac{\sqrt{\pi}2\theta!}{2^{2\theta}\theta!}}$$
+
+As shown above the function $g$ can be written as the sum of a $\Gamma(\theta,1)$ with weight 2, and an incomplete gamma distribution $\Gamma(\theta+\frac{1}{2},x)$ with weight 1.
+
+````{r}
+set.seed(123)
+N <- 10000
+U = runif(N)
+theta = 0.5
+x <- seq(0, 10, by = 0.001)
+rand.samples = rep(NA,N)
+
+for(i in 1:N){
+  if(U[i]<0.67){
+    rand.samples[i] = rgamma(1,shape=theta,rate=1)
+  }
+  else{
+    rand.samples[i] = rgamma(1,shape=theta+1/2,rate=1)
+  }
+}
+
+true = 2*dgamma(x,theta,1) + dgamma(x,theta+(1/2),1)
+plot(density(rand.samples),main="Density of the Mixture Model, Theta = 0.5")
+lines(x,true,col="red")
+````
+The red line is the "true" distribution while the black line is the estimate.
+
+$f=\sqrt{4+x}x^{\theta-1}e^{-x}$
+````{r}
+set.seed(123)
+N <- 10000
+theta = 0.5
+
+g <- function(x){
+  (2*x^(theta-1)+x^(theta-1/2))*exp(-x)
+}
+
+f <- function(x){
+  sqrt(4+x)*x^(theta-1)*exp(-x)
+}
+
+x <- seq(0.0001, 10, by = 0.01)
+y <- rep(0,N)
+
+rsampling <- function(M){
+
+ for(i in 1:10000){
+    u = runif(1, 0, 1)
+    y = g(u)
+
+    if(g(y)*u*M <= f(y)){
+      return(y)
+    }
+ }
+}
+
+M = 1/(2+sqrt(pi)*2*factorial(theta)/2^(2*theta)/factorial(theta))
+samp = replicate(10000, rsampling(M))
+
+true = sqrt(4+x)*x^(theta-1)*exp(-x)
+plot(density(samp),main="Density, f, Theta = 0.5")
+lines(x,true,col="red")
+````
+6.3.1
+Normal Inverse Gamma pdf
+````{r}
+library(HI)
+post <- function(x,mu,sigma2,a,b,lambda=1){
+  return(((lambda^.5)/((sigma2*2*pi)^.5))*((b^a)/gamma(a))*
+    ((1/sigma2)^(a+1))*exp(-1*(2*b+(lambda*((x-mu)^2)/(2*sigma2^2)))))
+}
+deltapost <- function(delta ,x, mu, sigma2, a,b,lambda=1) {
+  prod(delta * post(x, mu, sigma2,a,b,lambda) + (1 - delta) 
+       * post(x, mu, sigma2,a,b,lambda))
+}
+
+nburn = 200
+niter = 1000
+thetaInit<- c(0.5,1,1,1,1)
+
+mcmc <- function(niter, thetaInit, data, mu, sigma2, a, b, nburn=200){
+  p <- length(thetaInit)
+  thetaCurrent <- thetaInit
+  
+  logFC <- function(th, idx) {
+    theta <- thetaCurrent
+    delta <- thetaCurrent[1]
+    theta[idx] <- th
+    deltapost(delta, x, mu, sigma2, a, b)
+  }
+  
+out <- matrix(thetaInit, niter, p, byrow = TRUE)
+
+  for (i in 2:niter) {
+    for (j in 1:p) {
+
+      out[i, j] <- thetaCurrent[j] <-
+          HI::arms(thetaCurrent[j], logFC, function(x, idx)((x > -10) * (x < 10)),
+                   1, idx = j)
+    }
+  }
+  out[-(1:nburn), ]
+}
+set.seed(123)
+n=100
+mu1 <- rnorm(1,0,100)
+mu2 <- rnorm(1,0,100)
+s1 <- rgamma(1,.5,scale=10)
+s2 <- rgamma(1,.5,scale=10)
+
+x <- rnorm(n/2, mu1, s1)
+y <- rnorm(n/2, mu2, s2)
+x <- c(x,y)
+mu=0
+sigma2=100
+a=.5
+b=10
+
+plot(ts(mcmc(niter, thetaInit, x, mu, sigma2, a, b)))
+````
